@@ -1,7 +1,28 @@
+# Dependencies
 node_modules/
-.env
-.env.local
+
+# Environment (.env intentionally tracked)
+
+
+
+# Logs
 *.log
 npm-debug.log*
-.DS_Store
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# Testing
 coverage/
+.nyc_output/
+
+# Build / deploy
+dist/
+build/
+.vercel/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

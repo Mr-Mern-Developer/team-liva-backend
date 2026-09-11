@@ -24,25 +24,59 @@ function applyDnsOverride() {
 }
 
 /**
- * Connects to MongoDB. The URI is read from MONGODB_URI in the environment.
- * We fail fast on a missing/bad URI so the process never boots half-wired.
+ * Cached across invocations. On Vercel a warm lambda reuses the module scope,
+ * so holding the promise here keeps one connection instead of opening a new
+ * one per request and exhausting the Atlas pool.
+ */
+let cached = global.__teamlivaMongoose;
+if (!cached) {
+  cached = { conn: null, promise: null };
+  global.__teamlivaMongoose = cached;
+}
+
+/**
+ * Connects to MongoDB and resolves once the connection is usable.
+ * Throws on failure — callers decide whether that's fatal.
  */
 async function connectDB() {
-  const uri = process.env.MONGODB_URI;
+  if (cached.conn) return cached.conn;
 
+  const uri = process.env.MONGODB_URI;
   if (!uri) {
-    console.error('[db] MONGODB_URI is not set. Copy .env.example to .env and fill it in.');
-    process.exit(1);
+    throw new Error('MONGODB_URI is not set. Copy .env.example to .env and fill it in.');
   }
 
-  applyDnsOverride();
-  mongoose.set('strictQuery', true);
+  if (!cached.promise) {
+    applyDnsOverride();
+    mongoose.set('strictQuery', true);
 
+    cached.promise = mongoose
+      .connect(uri, {
+        serverSelectionTimeoutMS: 15000,
+        // Serverless invocations are short; a small pool avoids piling up
+        // idle sockets against the Atlas connection limit.
+        maxPoolSize: process.env.VERCEL ? 5 : 10,
+      })
+      .then((m) => {
+        console.log(`[db] connected -> ${m.connection.host}/${m.connection.name}`);
+        return m;
+      })
+      .catch((err) => {
+        // Clear the cache so the next request can retry rather than reusing
+        // a permanently rejected promise.
+        cached.promise = null;
+        throw err;
+      });
+  }
+
+  cached.conn = await cached.promise;
+  return cached.conn;
+}
+
+/** Wraps connectDB for the long-running server, where failure should be fatal. */
+async function connectDBOrExit() {
   try {
-    const conn = await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 15000,
-    });
-    console.log(`[db] connected -> ${conn.connection.host}/${conn.connection.name}`);
+    await connectDB();
   } catch (err) {
     console.error('[db] connection failed:', err.message);
     if (/querySrv|ENOTFOUND|EREFUSED|ECONNREFUSED/i.test(err.message)) {
@@ -58,4 +92,6 @@ async function connectDB() {
   mongoose.connection.on('error', (err) => console.error('[db] error:', err.message));
 }
 
-module.exports = connectDB;
+module.exports = connectDBOrExit;
+module.exports.connectDB = connectDB;
+module.exports.connectDBOrExit = connectDBOrExit;

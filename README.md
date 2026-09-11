@@ -88,3 +88,4 @@ existing admin's token. Alternatively set `SEED_ADMIN_EMAIL` /
   from queries by default (`select: false`).
 - `/api` is rate limited to 300 requests per 15 minutes per IP.
 - `.env` is gitignored — never commit real credentials.
+# team-liva-backend
