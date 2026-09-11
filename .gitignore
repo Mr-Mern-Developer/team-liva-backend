@@ -2,8 +2,8 @@
 node_modules/
 
 # Environment (.env intentionally tracked)
-
-
+.env.local
+.env.*.local
 
 # Logs
 *.log
